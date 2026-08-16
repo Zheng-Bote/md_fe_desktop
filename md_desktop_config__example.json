@@ -1,0 +1,28 @@
+{
+    "__comment_global": "This is an example configuration file. You can safely rename or copy this to data/md_desktop_config.json",
+    
+    "name": "MitM Medical Devices Desktop",
+    
+    "log": {
+        "__comment_log_level": "Valid log_level values: trace, debug, info, warn, error",
+        "log_level": "info",
+        "__comment_rotation": "Spdlog log rotation settings. Logs are stored in data/logs/YYYY-MM.log",
+        "max_file_size_mb": 10,
+        "max_files": 5
+    },
+    
+    "networking": {
+        "proxy": {
+            "__comment_proxy": "Default proxy server proposal for the UI. Sensitive data like usernames, passwords and the activation state are stored encrypted in data/settings/<user>.enc",
+            "proxy_host": "http://proxy.corporate.local",
+            "proxy_port": 8080
+        }
+    },
+    
+    "wserver": {
+        "__comment_wserver": "Backend API server connection details. Note: Network requests to this host will automatically bypass the proxy.",
+        "host": "api.medical-devices.net",
+        "port": 443,
+        "use_https": true
+    }
+}

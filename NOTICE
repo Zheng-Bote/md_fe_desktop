@@ -1,0 +1,30 @@
+MitM Medical Devices Desktop
+Copyright 2026 ZHENG Robert
+
+This product includes software developed by third parties:
+
+* Qt 6 (https://www.qt.io/)
+  Licensed under the GNU Lesser General Public License (LGPL) version 3.
+
+* nlohmann/json (https://github.com/nlohmann/json)
+  Licensed under the MIT License.
+
+* spdlog (https://github.com/gabime/spdlog)
+  Licensed under the MIT License.
+
+* fmt (https://github.com/fmtlib/fmt)
+  Licensed under the MIT License.
+
+* cpp-httplib (https://github.com/yhirose/cpp-httplib)
+  Licensed under the MIT License.
+
+* OpenSSL (https://www.openssl.org/)
+  Licensed under the Apache License 2.0.
+
+* qtkeychain (https://github.com/frankosterfeld/qtkeychain)
+  Licensed under the Modified BSD License.
+
+* gh_update_checker (FetchContent)
+  Licensed under its respective Open Source License.
+
+This project itself is licensed under the Apache License 2.0.

@@ -39,7 +39,15 @@ DesktopConfig ConfigLoader::load(const QString& filePath) {
 
     DesktopConfig config;
     if (j.contains("name")) config.name = QString::fromStdString(j["name"]);
-    if (j.contains("log_level")) config.logLevel = QString::fromStdString(j["log_level"]);
+    
+    if (j.contains("log")) {
+        auto l = j["log"];
+        if (l.contains("log_level")) config.log.logLevel = QString::fromStdString(l["log_level"]);
+        if (l.contains("max_file_size_mb")) config.log.maxFileSizeMb = l["max_file_size_mb"];
+        if (l.contains("max_files")) config.log.maxFiles = l["max_files"];
+        if (l.contains("rotate_hour")) config.log.rotateHour = l["rotate_hour"];
+        if (l.contains("rotate_minute")) config.log.rotateMinute = l["rotate_minute"];
+    }
     
     if (j.contains("wserver")) {
         auto w = j["wserver"];
@@ -70,7 +78,12 @@ void ConfigLoader::save(const DesktopConfig& config, const QString& filePath) {
     }
 
     j["name"] = config.name.toStdString();
-    j["log_level"] = config.logLevel.toStdString();
+    
+    j["log"]["log_level"] = config.log.logLevel.toStdString();
+    j["log"]["max_file_size_mb"] = config.log.maxFileSizeMb;
+    j["log"]["max_files"] = config.log.maxFiles;
+    j["log"]["rotate_hour"] = config.log.rotateHour;
+    j["log"]["rotate_minute"] = config.log.rotateMinute;
     
     j["wserver"]["host"] = config.wserver.host.toStdString();
     j["wserver"]["port"] = config.wserver.port;
@@ -78,9 +91,6 @@ void ConfigLoader::save(const DesktopConfig& config, const QString& filePath) {
 
     j["networking"]["proxy"]["proxy_host"] = config.proxy.proxyHost.toStdString();
     j["networking"]["proxy"]["proxy_port"] = config.proxy.proxyPort;
-    j["networking"]["proxy"]["proxy_username"] = config.proxy.proxyUsername.toStdString();
-    j["networking"]["proxy"]["proxy_password"] = config.proxy.proxyPassword.toStdString();
-    j["networking"]["proxy"]["proxy_active"] = config.proxy.proxyActive;
 
     if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         std::string out = j.dump(4);

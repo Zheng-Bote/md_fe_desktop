@@ -1,13 +1,14 @@
 {
-    "log_level": "DEBUG",
     "name": "MitM Medical Devices Desktop",
+    "log": {
+        "log_level": "DEBUG",
+        "max_file_size_mb": 10,
+        "max_files": 5
+    },
     "networking": {
         "proxy": {
-            "proxy_active": true,
             "proxy_host": "https://proxy.muc",
-            "proxy_password": "Test",
-            "proxy_port": 8080,
-            "proxy_username": "q225265"
+            "proxy_port": 8080
         }
     },
     "wserver": {

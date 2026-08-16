@@ -35,9 +35,17 @@ struct ProxyConfig {
     bool proxyActive = false;
 };
 
+struct LogConfig {
+    QString logLevel = "info";
+    int maxFileSizeMb = 10;
+    int maxFiles = 5;
+    int rotateHour = 0;
+    int rotateMinute = 0;
+};
+
 struct DesktopConfig {
     QString name;
-    QString logLevel;
+    LogConfig log;
     WServerConfig wserver;
     ProxyConfig proxy;
 };

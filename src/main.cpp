@@ -22,6 +22,12 @@
 #include <QProcessEnvironment>
 #include <QMessageBox>
 #include <QIcon>
+#include <QDate>
+#include <QDir>
+#include <QSysInfo>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/rotating_file_sink.h>
+#include "rz_config.hpp"
 
 #include <qtkeychain/keychain.h>
 
@@ -64,6 +70,33 @@ int main(int argc, char *argv[]) {
         } else {
             QNetworkProxyFactory::setApplicationProxyFactory(new CustomProxyFactory(QNetworkProxy::NoProxy, config.wserver.host));
         }
+
+        QString logDir = QCoreApplication::applicationDirPath() + "/data/logs/";
+        QDir().mkpath(logDir);
+        QString logFile = logDir + QDate::currentDate().toString("yyyy-MM") + ".log";
+        
+        auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+            logFile.toStdString(),
+            config.log.maxFileSizeMb * 1024 * 1024,
+            config.log.maxFiles
+        );
+
+        spdlog::set_default_logger(std::make_shared<spdlog::logger>("main", file_sink));
+        spdlog::flush_on(spdlog::level::info);
+
+        QString levelStr = config.log.logLevel.toLower();
+        if (levelStr == "debug") spdlog::set_level(spdlog::level::debug);
+        else if (levelStr == "trace") spdlog::set_level(spdlog::level::trace);
+        else if (levelStr == "warning" || levelStr == "warn") spdlog::set_level(spdlog::level::warn);
+        else if (levelStr == "error" || levelStr == "err") spdlog::set_level(spdlog::level::err);
+        else spdlog::set_level(spdlog::level::info);
+
+        QString compName = QSysInfo::machineHostName();
+        spdlog::info("=== Application Started ===");
+        spdlog::info("Program: {}", std::string(rz::config::PROG_LONGNAME));
+        spdlog::info("Version: {}", std::string(rz::config::VERSION));
+        spdlog::info("User: {}", osUser.toStdString());
+        spdlog::info("Computer: {}", compName.toStdString());
 
         qDebug() << "Loaded config:" << config.name;
     } catch (const std::exception& e) {
@@ -128,5 +161,8 @@ int main(int argc, char *argv[]) {
     job->start();
 #endif
 
-    return app.exec();
+    int ret = app.exec();
+    spdlog::info("=== Application Ended ===");
+    spdlog::shutdown();
+    return ret;
 }
