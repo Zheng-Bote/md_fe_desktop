@@ -1,0 +1,16 @@
+[requires]
+nlohmann_json/3.11.3
+spdlog/[>=1.17 <2]
+cpp-httplib/[>=0.14 <1]
+openssl/[>=3.0 <4]
+
+[options]
+cpp-httplib/*:with_openssl=True
+
+[generators]
+CMakeDeps
+CMakeToolchain
+PkgConfigDeps
+
+[layout]
+cmake_layout
