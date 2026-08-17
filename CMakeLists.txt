@@ -40,6 +40,8 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(httplib CONFIG REQUIRED)
 find_package(OpenSSL CONFIG REQUIRED)
+find_package(SQLite3 CONFIG REQUIRED)
+find_package(flatbuffers CONFIG REQUIRED)
 
 FetchContent_Declare(
   gh_update_checker
@@ -80,6 +82,10 @@ add_executable(md_fe_desktop
     include/TokenManager.hpp
     src/CryptoHelper.cpp
     include/CryptoHelper.hpp
+    src/DatabaseManager.cpp
+    include/DatabaseManager.hpp
+    src/SyncManager.cpp
+    include/SyncManager.hpp
 )
 
 target_link_libraries(md_fe_desktop PRIVATE
@@ -91,6 +97,8 @@ target_link_libraries(md_fe_desktop PRIVATE
     spdlog::spdlog
     httplib::httplib
     openssl::openssl
+    SQLite::SQLite3
+    flatbuffers::flatbuffers
     gh_update_checker::gh_update_checker
     qt6keychain
 )

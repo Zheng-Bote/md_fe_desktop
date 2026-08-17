@@ -85,3 +85,15 @@ void TokenManager::loadTokens() {
     });
     job->start();
 }
+
+void TokenManager::deleteTokens() {
+    auto *job = new QKeychain::DeletePasswordJob(SERVICE_NAME, this);
+    job->setAutoDelete(true);
+    job->setKey("access_token");
+    job->start();
+
+    auto *job2 = new QKeychain::DeletePasswordJob(SERVICE_NAME, this);
+    job2->setAutoDelete(true);
+    job2->setKey("refresh_token");
+    job2->start();
+}

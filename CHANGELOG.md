@@ -5,6 +5,18 @@ All notable changes to the `md_fe_desktop` (Medical Devices Desktop Frontend) pr
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-17
+
+### Added
+- **Medical Devices Database & Sync:** 
+  - Local SQLite database integration (`DatabaseManager`) for offline data persistence.
+  - Asynchronous background synchronization (`SyncManager`) fetching devices and device types securely from the Go backend using Google Flatbuffers.
+- **Dynamic Dashboard UI:** 
+  - Responsive grid layout displaying synchronized medical devices as interactive cards.
+  - Setup UI workflow allowing users to assign local data directories to specific devices.
+  - "Empty State" placeholder support when no devices are synchronized.
+- **Session Management:** Secure logout functionality to clear authentication tokens from `QKeychain`.
+
 ## [0.1.0] - 2026-08-16
 
 ### Added

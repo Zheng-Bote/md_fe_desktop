@@ -19,24 +19,42 @@
 #define MAINWINDOW_HPP
 
 #include <QMainWindow>
+#include <QLabel>
+#include <QStackedWidget>
+#include <QListWidget>
+#include <memory>
 #include "ConfigLoader.hpp"
-
-class QLabel;
+#include "DatabaseManager.hpp"
+#include "TokenManager.hpp"
+#include "SyncManager.hpp"
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
-public:
-    explicit MainWindow(DesktopConfig& config, QWidget* parent = nullptr);
-    void setAccessToken(const QString& token);
 
-private slots:
+public:
+    explicit MainWindow(DesktopConfig& config, std::shared_ptr<DatabaseManager> dbMgr, TokenManager* tm, QWidget* parent = nullptr);
+
+    void setAccessToken(const QString& token);
+    
+public slots:
+    void logout();
     void showAboutDialog();
     void showProxyDialog();
+    void onSyncFinished(bool success);
+    void changeDevicePath(const std::string& deviceId);
+    void populateDevices();
 
 private:
+    DesktopConfig& m_config;
     QLabel* m_statusLabel;
     QLabel* m_appInfoLabel;
-    DesktopConfig& m_config;
+    std::shared_ptr<DatabaseManager> m_dbManager;
+    std::unique_ptr<SyncManager> m_syncManager;
+    TokenManager* m_tokenManager;
+    
+    QStackedWidget* m_stackedWidget;
+    QListWidget* m_sidebar;
+    QWidget* m_devicesContainer;
 };
 
 #endif // MAINWINDOW_HPP

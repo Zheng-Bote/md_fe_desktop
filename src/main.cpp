@@ -36,6 +36,8 @@
 #include "LoginWindow.hpp"
 #include "MainWindow.hpp"
 #include "TokenManager.hpp"
+#include "DatabaseManager.hpp"
+#include <memory>
 
 QString getOSUser() {
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
@@ -103,16 +105,22 @@ int main(int argc, char *argv[]) {
         QMessageBox::critical(nullptr, "Config Error", e.what());
         return -1;
     }
-
     TokenManager* tokenManager = new TokenManager(&app);
 
-    auto startAppFlow = [&config, tokenManager]() {
+    std::shared_ptr<DatabaseManager> dbManager = std::make_shared<DatabaseManager>();
+    if (!dbManager->initialize()) {
+        spdlog::error("Failed to initialize local SQLite database");
+    } else {
+        spdlog::info("Local SQLite database initialized.");
+    }
+
+    auto startAppFlow = [&config, tokenManager, dbManager]() {
         qDebug() << "Vault access granted. Loading tokens...";
         
-        QObject::connect(tokenManager, &TokenManager::tokensLoaded, [&config, tokenManager](const QString& access, const QString& refresh) {
+        QObject::connect(tokenManager, &TokenManager::tokensLoaded, [&config, tokenManager, dbManager](const QString& access, const QString& refresh) {
             if (!access.isEmpty()) {
                 qDebug() << "Tokens found in Vault! Restoring session...";
-                MainWindow* mainWin = new MainWindow(config);
+                MainWindow* mainWin = new MainWindow(config, dbManager, tokenManager);
                 mainWin->setAccessToken(access);
                 mainWin->show();
             } else {
@@ -120,11 +128,11 @@ int main(int argc, char *argv[]) {
                 AuthService* authService = new AuthService(config);
                 LoginWindow* loginWin = new LoginWindow(authService);
                 
-                QObject::connect(loginWin, &LoginWindow::loginSuccessful, [&config, loginWin, tokenManager](const QString& access, const QString& refresh) {
+                QObject::connect(loginWin, &LoginWindow::loginSuccessful, [&config, loginWin, tokenManager, dbManager](const QString& access, const QString& refresh) {
                     tokenManager->saveTokens(access, refresh);
                     loginWin->hide();
                     
-                    MainWindow* mainWin = new MainWindow(config);
+                    MainWindow* mainWin = new MainWindow(config, dbManager, tokenManager);
                     mainWin->setAccessToken(access);
                     mainWin->show();
                 });

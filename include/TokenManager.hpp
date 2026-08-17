@@ -28,6 +28,7 @@ public:
 
     void saveTokens(const QString& access, const QString& refresh);
     void loadTokens();
+    void deleteTokens();
 
 signals:
     void tokensLoaded(const QString& access, const QString& refresh);
