@@ -5,6 +5,21 @@ All notable changes to the `md_fe_desktop` (Medical Devices Desktop Frontend) pr
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-18
+
+### Added
+- **Search Functionality:** Added a search bar to the "All Devices" section for filtering devices by name and manufacturer.
+- **Improved Rendering:** Display device descriptions under their respective categories in the "All Devices" section.
+
+### Changed
+- **Startup Flow:** The application no longer requires a login at startup. It boots directly into the main window.
+- **Background Sync:** The bidirectional device synchronization now runs in the background without requiring user authentication.
+- **UI Layout:** The sidebar now explicitly separates "My Devices" (configured locally) and "All Devices" (available for setup).
+- **Logout Behavior:** Logging out now securely clears the session and updates the UI without forcing the application to quit.
+
+### Fixed
+- **Rendering Bug:** Fixed an issue where orphaned UI elements from previous sync runs could overlap newly rendered device cards.
+
 ## [0.2.0] - 2026-08-17
 
 ### Added

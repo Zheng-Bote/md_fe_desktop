@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 project(
     md_fe_desktop
-    VERSION 0.1.0
+    VERSION 0.3.0
     DESCRIPTION "Desktop frontend for MitM medical devices"
     HOMEPAGE_URL "https://github.com/Zheng-Bote/md_fe_desktop"
     LANGUAGES CXX

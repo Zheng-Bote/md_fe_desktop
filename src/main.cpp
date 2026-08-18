@@ -118,27 +118,15 @@ int main(int argc, char *argv[]) {
         qDebug() << "Vault access granted. Loading tokens...";
         
         QObject::connect(tokenManager, &TokenManager::tokensLoaded, [&config, tokenManager, dbManager](const QString& access, const QString& refresh) {
+            MainWindow* mainWin = new MainWindow(config, dbManager, tokenManager);
             if (!access.isEmpty()) {
                 qDebug() << "Tokens found in Vault! Restoring session...";
-                MainWindow* mainWin = new MainWindow(config, dbManager, tokenManager);
                 mainWin->setAccessToken(access);
-                mainWin->show();
             } else {
-                qDebug() << "No tokens found. Showing Login UI...";
-                AuthService* authService = new AuthService(config);
-                LoginWindow* loginWin = new LoginWindow(authService);
-                
-                QObject::connect(loginWin, &LoginWindow::loginSuccessful, [&config, loginWin, tokenManager, dbManager](const QString& access, const QString& refresh) {
-                    tokenManager->saveTokens(access, refresh);
-                    loginWin->hide();
-                    
-                    MainWindow* mainWin = new MainWindow(config, dbManager, tokenManager);
-                    mainWin->setAccessToken(access);
-                    mainWin->show();
-                });
-
-                loginWin->show();
+                qDebug() << "No tokens found. Starting without login...";
+                mainWin->startBackgroundSync();
             }
+            mainWin->show();
         });
 
         tokenManager->loadTokens();

@@ -22,11 +22,13 @@
 #include <QLabel>
 #include <QStackedWidget>
 #include <QListWidget>
+#include <QLineEdit>
 #include <memory>
 #include "ConfigLoader.hpp"
 #include "DatabaseManager.hpp"
 #include "TokenManager.hpp"
 #include "SyncManager.hpp"
+#include <functional>
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -35,6 +37,7 @@ public:
     explicit MainWindow(DesktopConfig& config, std::shared_ptr<DatabaseManager> dbMgr, TokenManager* tm, QWidget* parent = nullptr);
 
     void setAccessToken(const QString& token);
+    void startBackgroundSync();
     
 public slots:
     void logout();
@@ -45,16 +48,23 @@ public slots:
     void populateDevices();
 
 private:
+    void requireLoginAndExecute(std::function<void()> onSuccess);
+    void populateMyDevices();
+    void populateAllDevices();
+
     DesktopConfig& m_config;
     QLabel* m_statusLabel;
     QLabel* m_appInfoLabel;
     std::shared_ptr<DatabaseManager> m_dbManager;
     std::unique_ptr<SyncManager> m_syncManager;
     TokenManager* m_tokenManager;
+    QString m_accessToken;
     
     QStackedWidget* m_stackedWidget;
     QListWidget* m_sidebar;
     QWidget* m_devicesContainer;
+    QWidget* m_allDevicesContainer;
+    QLineEdit* m_allDevicesSearchInput;
 };
 
 #endif // MAINWINDOW_HPP

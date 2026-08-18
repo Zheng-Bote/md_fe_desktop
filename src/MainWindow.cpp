@@ -21,6 +21,8 @@
 #include <QNetworkProxy>
 #include "ProxyFactory.hpp"
 #include "MainWindow.hpp"
+#include "AuthService.hpp"
+#include "LoginWindow.hpp"
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -35,6 +37,8 @@
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <thread>
+#include <map>
+#include <unordered_map>
 #include "rz_config.hpp"
 #include <check_gh-update.hpp>
 #include <spdlog/spdlog.h>
@@ -78,6 +82,7 @@ MainWindow::MainWindow(DesktopConfig& config, std::shared_ptr<DatabaseManager> d
     m_sidebar->setMaximumWidth(250);
     m_sidebar->addItem("Dashboard");
     m_sidebar->addItem("My Devices");
+    m_sidebar->addItem("All Devices");
     m_sidebar->addItem("Upload Queue");
     m_sidebar->addItem("Settings");
     m_sidebar->setCurrentRow(1); // Default to My Devices
@@ -110,6 +115,28 @@ MainWindow::MainWindow(DesktopConfig& config, std::shared_ptr<DatabaseManager> d
     scrollArea->setWidget(m_devicesContainer);
     devLayout->addWidget(scrollArea);
     m_stackedWidget->addWidget(devicesView);
+    
+    // All Devices View
+    QWidget* allDevicesView = new QWidget();
+    QVBoxLayout* allDevLayout = new QVBoxLayout(allDevicesView);
+    allDevLayout->addWidget(new QLabel("<h2>All Devices</h2>"));
+    
+    m_allDevicesSearchInput = new QLineEdit();
+    m_allDevicesSearchInput->setPlaceholderText("Search by device name or manufacturer...");
+    m_allDevicesSearchInput->setClearButtonEnabled(true);
+    allDevLayout->addWidget(m_allDevicesSearchInput);
+    connect(m_allDevicesSearchInput, &QLineEdit::textChanged, this, [this]() {
+        populateAllDevices();
+    });
+    
+    QScrollArea* allScrollArea = new QScrollArea();
+    allScrollArea->setWidgetResizable(true);
+    allScrollArea->setFrameShape(QFrame::NoFrame);
+    
+    m_allDevicesContainer = new QWidget();
+    allScrollArea->setWidget(m_allDevicesContainer);
+    allDevLayout->addWidget(allScrollArea);
+    m_stackedWidget->addWidget(allDevicesView);
     
     // Dummy views for others
     m_stackedWidget->addWidget(new QLabel("<h2>Upload Queue</h2><p>No active uploads.</p>"));
@@ -178,12 +205,36 @@ MainWindow::MainWindow(DesktopConfig& config, std::shared_ptr<DatabaseManager> d
 }
 
 void MainWindow::setAccessToken(const QString& token) {
+    m_accessToken = token;
     m_statusLabel->setText("Token: " + token);
-    
-    // Start DB sync in background
+    startBackgroundSync();
+}
+
+void MainWindow::startBackgroundSync() {
     if (m_syncManager) {
         spdlog::info("Starting background sync for devices...");
-        m_syncManager->performSync(token.toStdString());
+        m_syncManager->performSync(m_accessToken.toStdString());
+    }
+}
+
+void MainWindow::requireLoginAndExecute(std::function<void()> onSuccess) {
+    if (!m_accessToken.isEmpty()) {
+        onSuccess();
+    } else {
+        AuthService* authService = new AuthService(m_config);
+        LoginWindow* loginWin = new LoginWindow(authService);
+        
+        QObject::connect(loginWin, &LoginWindow::loginSuccessful, this, [this, loginWin, onSuccess](const QString& access, const QString& refresh) {
+            if (m_tokenManager) {
+                m_tokenManager->saveTokens(access, refresh);
+            }
+            setAccessToken(access);
+            loginWin->hide();
+            loginWin->deleteLater();
+            onSuccess();
+        });
+
+        loginWin->show();
     }
 }
 
@@ -333,14 +384,28 @@ void MainWindow::showProxyDialog() {
     }
 }
 
-void MainWindow::populateDevices() {
-    // Clear existing layout
-    if (m_devicesContainer->layout()) {
-        QLayoutItem* item;
-        while ((item = m_devicesContainer->layout()->takeAt(0)) != nullptr) {
-            delete item->widget();
-            delete item;
+static void clearLayout(QLayout* layout) {
+    if (!layout) return;
+    QLayoutItem* item;
+    while ((item = layout->takeAt(0)) != nullptr) {
+        if (QWidget* widget = item->widget()) {
+            widget->deleteLater();
         }
+        if (QLayout* childLayout = item->layout()) {
+            clearLayout(childLayout);
+        }
+        delete item;
+    }
+}
+
+void MainWindow::populateDevices() {
+    populateMyDevices();
+    populateAllDevices();
+}
+
+void MainWindow::populateMyDevices() {
+    if (m_devicesContainer->layout()) {
+        clearLayout(m_devicesContainer->layout());
         delete m_devicesContainer->layout();
     }
     
@@ -354,8 +419,12 @@ void MainWindow::populateDevices() {
     
     int row = 0;
     int col = 0;
+    bool hasAny = false;
     
     for (const auto& dev : devices) {
+        if (dev.local_config_path.empty()) continue;
+        hasAny = true;
+        
         QFrame* card = new QFrame();
         card->setFrameShape(QFrame::StyledPanel);
         card->setStyleSheet("QFrame { background-color: white; border-radius: 8px; border: 1px solid #ddd; }");
@@ -371,16 +440,13 @@ void MainWindow::populateDevices() {
         mfgLabel->setStyleSheet("color: #555; border: none;");
         cardLayout->addWidget(mfgLabel);
         
-        QString pathText = dev.local_config_path.empty() ? "Not configured" : QString::fromStdString(dev.local_config_path);
-        QLabel* pathLabel = new QLabel("Path: " + pathText);
+        QLabel* pathLabel = new QLabel("Path: " + QString::fromStdString(dev.local_config_path));
         pathLabel->setStyleSheet("color: #777; font-size: 11px; border: none;");
         pathLabel->setWordWrap(true);
         cardLayout->addWidget(pathLabel);
         
-        QLabel* statusBadge = new QLabel(dev.local_config_path.empty() ? "Missing Config" : "Monitoring Path");
-        statusBadge->setStyleSheet(dev.local_config_path.empty() 
-            ? "background-color: #ffcc00; color: #333; padding: 4px; border-radius: 4px; font-weight: bold; border: none;"
-            : "background-color: #4CAF50; color: white; padding: 4px; border-radius: 4px; font-weight: bold; border: none;");
+        QLabel* statusBadge = new QLabel("Monitoring Path");
+        statusBadge->setStyleSheet("background-color: #4CAF50; color: white; padding: 4px; border-radius: 4px; font-weight: bold; border: none;");
         statusBadge->setAlignment(Qt::AlignCenter);
         
         QHBoxLayout* bottomLayout = new QHBoxLayout();
@@ -390,7 +456,6 @@ void MainWindow::populateDevices() {
         QPushButton* changeBtn = new QPushButton("Change Path");
         changeBtn->setStyleSheet("background-color: #005A9C; color: white; border-radius: 4px; padding: 5px 10px; border: none;");
         
-        // Use a smart pointer or std::string by value for the lambda
         std::string dId = dev.id;
         connect(changeBtn, &QPushButton::clicked, this, [this, dId]() {
             this->changeDevicePath(dId);
@@ -408,8 +473,8 @@ void MainWindow::populateDevices() {
         }
     }
     
-    if (devices.empty()) {
-        QLabel* emptyLabel = new QLabel("No medical devices synchronized or found.");
+    if (!hasAny) {
+        QLabel* emptyLabel = new QLabel("No devices configured on this system.");
         emptyLabel->setStyleSheet("color: #777; font-size: 14px; font-style: italic;");
         emptyLabel->setAlignment(Qt::AlignCenter);
         grid->addWidget(emptyLabel, 0, 0, 1, 2, Qt::AlignCenter);
@@ -419,22 +484,140 @@ void MainWindow::populateDevices() {
     }
 }
 
-void MainWindow::changeDevicePath(const std::string& deviceId) {
-    QString dir = QFileDialog::getExistingDirectory(this, "Select Local Folder for Device Data",
-                                                    QString(),
-                                                    QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
-    
-    if (!dir.isEmpty() && m_dbManager) {
-        if (m_dbManager->updateDevicePath(deviceId, dir.toStdString())) {
-            populateDevices();
-        } else {
-            QMessageBox::warning(this, "Error", "Failed to save device path configuration.");
-        }
+void MainWindow::populateAllDevices() {
+    if (m_allDevicesContainer->layout()) {
+        clearLayout(m_allDevicesContainer->layout());
+        delete m_allDevicesContainer->layout();
     }
+    
+    QVBoxLayout* mainLayout = new QVBoxLayout(m_allDevicesContainer);
+    mainLayout->setSpacing(20);
+    
+    std::vector<Device> devices;
+    std::vector<DeviceType> types;
+    if (m_dbManager) {
+        devices = m_dbManager->getDevices();
+        types = m_dbManager->getDeviceTypes();
+    }
+    
+    std::unordered_map<std::string, DeviceType> typeMap;
+    for (const auto& t : types) {
+        typeMap[t.id] = t;
+    }
+    
+    QString searchText = m_allDevicesSearchInput ? m_allDevicesSearchInput->text().toLower() : "";
+    
+    std::map<std::string, std::vector<Device>> devicesByTypeId;
+    bool hasAny = false;
+    for (const auto& dev : devices) {
+        if (!dev.local_config_path.empty() || !dev.active) continue;
+        
+        if (!searchText.isEmpty()) {
+            QString name = QString::fromStdString(dev.device_name).toLower();
+            QString mfg = QString::fromStdString(dev.manufacturer).toLower();
+            if (!name.contains(searchText) && !mfg.contains(searchText)) {
+                continue;
+            }
+        }
+        
+        devicesByTypeId[dev.type_id].push_back(dev);
+        hasAny = true;
+    }
+    
+    if (!hasAny) {
+        QLabel* emptyLabel = new QLabel("No available devices found.");
+        emptyLabel->setStyleSheet("color: #777; font-size: 14px; font-style: italic;");
+        emptyLabel->setAlignment(Qt::AlignCenter);
+        mainLayout->addWidget(emptyLabel);
+        mainLayout->addStretch();
+        return;
+    }
+    
+    for (const auto& [typeId, devs] : devicesByTypeId) {
+        std::string typeName = "Unknown Type";
+        std::string typeDesc = "";
+        if (typeMap.count(typeId)) {
+            typeName = typeMap[typeId].name;
+            typeDesc = typeMap[typeId].description;
+        }
+        
+        QLabel* typeLabel = new QLabel(QString("<h3>%1</h3>").arg(QString::fromStdString(typeName)));
+        mainLayout->addWidget(typeLabel);
+        
+        if (!typeDesc.empty()) {
+            QLabel* descLabel = new QLabel(QString::fromStdString(typeDesc));
+            descLabel->setStyleSheet("color: #666; font-size: 12px; margin-bottom: 5px;");
+            descLabel->setWordWrap(true);
+            mainLayout->addWidget(descLabel);
+        }
+        
+        QGridLayout* grid = new QGridLayout();
+        grid->setSpacing(15);
+        int row = 0;
+        int col = 0;
+        
+        for (const auto& dev : devs) {
+            QFrame* card = new QFrame();
+            card->setFrameShape(QFrame::StyledPanel);
+            card->setStyleSheet("QFrame { background-color: white; border-radius: 8px; border: 1px solid #ddd; }");
+            card->setMinimumSize(350, 150);
+            
+            QVBoxLayout* cardLayout = new QVBoxLayout(card);
+            
+            QLabel* nameLabel = new QLabel(QString("<b>%1</b>").arg(QString::fromStdString(dev.device_name)));
+            nameLabel->setStyleSheet("font-size: 16px; border: none;");
+            cardLayout->addWidget(nameLabel);
+            
+            QLabel* mfgLabel = new QLabel(QString::fromStdString(dev.manufacturer));
+            mfgLabel->setStyleSheet("color: #555; border: none;");
+            cardLayout->addWidget(mfgLabel);
+            
+            QHBoxLayout* bottomLayout = new QHBoxLayout();
+            bottomLayout->addStretch();
+            
+            QPushButton* confBtn = new QPushButton("Configure");
+            confBtn->setStyleSheet("background-color: #005A9C; color: white; border-radius: 4px; padding: 5px 10px; border: none;");
+            
+            std::string dId = dev.id;
+            connect(confBtn, &QPushButton::clicked, this, [this, dId]() {
+                this->changeDevicePath(dId);
+            });
+            
+            bottomLayout->addWidget(confBtn);
+            cardLayout->addLayout(bottomLayout);
+            
+            grid->addWidget(card, row, col);
+            
+            col++;
+            if (col > 1) {
+                col = 0;
+                row++;
+            }
+        }
+        mainLayout->addLayout(grid);
+    }
+    
+    mainLayout->addStretch();
+}
+
+void MainWindow::changeDevicePath(const std::string& deviceId) {
+    requireLoginAndExecute([this, deviceId]() {
+        QString dir = QFileDialog::getExistingDirectory(this, "Select Local Folder for Device Data",
+                                                        QString(),
+                                                        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+        
+        if (!dir.isEmpty() && m_dbManager) {
+            if (m_dbManager->updateDevicePath(deviceId, dir.toStdString())) {
+                populateDevices();
+            } else {
+                QMessageBox::warning(this, "Error", "Failed to save device path configuration.");
+            }
+        }
+    });
 }
 
 void MainWindow::logout() {
-    auto reply = QMessageBox::question(this, "Logout", "Are you sure you want to logout? This will require you to enter your credentials again.",
+    auto reply = QMessageBox::question(this, "Logout", "Are you sure you want to logout?",
                                        QMessageBox::Yes | QMessageBox::No);
     if (reply == QMessageBox::Yes) {
         if (m_tokenManager) {
@@ -442,7 +625,9 @@ void MainWindow::logout() {
             spdlog::info("User logged out, tokens deleted.");
         }
         
-        QMessageBox::information(this, "Logged Out", "You have been successfully logged out. The application will now close.");
-        QApplication::quit();
+        m_accessToken = "";
+        m_statusLabel->setText("Token: None");
+        
+        QMessageBox::information(this, "Logged Out", "You have been successfully logged out.");
     }
 }
