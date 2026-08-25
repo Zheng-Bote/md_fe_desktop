@@ -1,3 +1,20 @@
+/**
+ * SPDX-FileComment: Medical Devices Desktop Frontend
+ * SPDX-FileType: SOURCE
+ * SPDX-FileContributor: ZHENG Robert
+ * SPDX-FileCopyrightText: 2026 ZHENG Robert
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * @file CryptoHelper.cpp
+ * @brief Implementation of CryptoHelper.cpp
+ * @version 1.0.0
+ * @date 2026-08-25
+ *
+ * @author ZHENG Robert (robert@hase-zheng.net)
+ * @copyright Copyright (c) 2026 ZHENG Robert
+ * @LICENSE Apache-2.0
+ */
+
 #include "CryptoHelper.hpp"
 #include <openssl/evp.h>
 #include <openssl/rand.h>

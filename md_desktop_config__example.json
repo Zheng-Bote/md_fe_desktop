@@ -10,7 +10,11 @@
         "max_file_size_mb": 10,
         "max_files": 5
     },
-    
+    "devices": {
+        "__comment_devices": "Device settings are stored in data/devices/<device_name>",
+        "devices_config_path": "data/devices/configs",
+        "devices_plugin_path": "data/devices/plugins"
+    },
     "networking": {
         "proxy": {
             "__comment_proxy": "Default proxy server proposal for the UI. Sensitive data like usernames, passwords and the activation state are stored encrypted in data/settings/<user>.enc",

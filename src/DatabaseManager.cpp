@@ -1,3 +1,20 @@
+/**
+ * SPDX-FileComment: Medical Devices Desktop Frontend
+ * SPDX-FileType: SOURCE
+ * SPDX-FileContributor: ZHENG Robert
+ * SPDX-FileCopyrightText: 2026 ZHENG Robert
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * @file DatabaseManager.cpp
+ * @brief Implementation of DatabaseManager.cpp
+ * @version 1.0.0
+ * @date 2026-08-25
+ *
+ * @author ZHENG Robert (robert@hase-zheng.net)
+ * @copyright Copyright (c) 2026 ZHENG Robert
+ * @LICENSE Apache-2.0
+ */
+
 #include "DatabaseManager.hpp"
 #include <spdlog/spdlog.h>
 #include <QCoreApplication>
@@ -114,7 +131,7 @@ bool DatabaseManager::upsertDevice(const Device& d) {
     sqlite3_bind_text(stmt, 2, d.type_id.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 3, d.device_name.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 4, d.manufacturer.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 5, d.interface.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, d.interface_name.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 6, d.description.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 7, d.created_at.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 8, d.last_update.c_str(), -1, SQLITE_STATIC);
@@ -159,7 +176,7 @@ std::vector<Device> DatabaseManager::getDevices() const {
             d.type_id = safe_str(sqlite3_column_text(stmt, 1));
             d.device_name = safe_str(sqlite3_column_text(stmt, 2));
             d.manufacturer = safe_str(sqlite3_column_text(stmt, 3));
-            d.interface = safe_str(sqlite3_column_text(stmt, 4));
+            d.interface_name = safe_str(sqlite3_column_text(stmt, 4));
             d.description = safe_str(sqlite3_column_text(stmt, 5));
             d.created_at = safe_str(sqlite3_column_text(stmt, 6));
             d.last_update = safe_str(sqlite3_column_text(stmt, 7));

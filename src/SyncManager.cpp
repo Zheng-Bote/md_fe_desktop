@@ -1,7 +1,29 @@
+/**
+ * SPDX-FileComment: Medical Devices Desktop Frontend
+ * SPDX-FileType: SOURCE
+ * SPDX-FileContributor: ZHENG Robert
+ * SPDX-FileCopyrightText: 2026 ZHENG Robert
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * @file SyncManager.cpp
+ * @brief Implementation of SyncManager.cpp
+ * @version 1.0.0
+ * @date 2026-08-25
+ *
+ * @author ZHENG Robert (robert@hase-zheng.net)
+ * @copyright Copyright (c) 2026 ZHENG Robert
+ * @LICENSE Apache-2.0
+ */
+
 #include "SyncManager.hpp"
 #include <httplib.h>
 #include <spdlog/spdlog.h>
 #include <QThread>
+
+#ifdef interface
+#undef interface
+#endif
+
 #include "fbs/devices_generated.h"
 
 SyncManager::SyncManager(std::shared_ptr<DatabaseManager> dbMgr, const DesktopConfig& config, QObject* parent)
@@ -40,6 +62,10 @@ void SyncManager::performSync(const std::string& jwtToken) {
             } else {
                 if (resTypes) {
                     spdlog::warn("SyncManager: Failed to fetch device types. Status: {}, Body: {}", resTypes->status, resTypes->body);
+                    if (resTypes->status == 401) {
+                        emit syncAuthError();
+                        return;
+                    }
                 } else {
                     auto err = resTypes.error();
                     spdlog::warn("SyncManager: Failed to fetch device types. Network error: {}", httplib::to_string(err));
@@ -57,7 +83,7 @@ void SyncManager::performSync(const std::string& jwtToken) {
                         if (d->type_id()) dev.type_id = d->type_id()->str();
                         if (d->device_name()) dev.device_name = d->device_name()->str();
                         if (d->manufacturer()) dev.manufacturer = d->manufacturer()->str();
-                        if (d->interface()) dev.interface = d->interface()->str();
+                        if (d->interface()) dev.interface_name = d->interface()->str();
                         if (d->description()) dev.description = d->description()->str();
                         if (d->created_at()) dev.created_at = d->created_at()->str();
                         if (d->last_update()) dev.last_update = d->last_update()->str();

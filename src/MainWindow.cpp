@@ -19,6 +19,8 @@
 #include <QProcessEnvironment>
 #include <QSysInfo>
 #include <QNetworkProxy>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include "ProxyFactory.hpp"
 #include "MainWindow.hpp"
 #include "AuthService.hpp"
@@ -54,6 +56,13 @@ MainWindow::MainWindow(DesktopConfig& config, std::shared_ptr<DatabaseManager> d
     
     m_syncManager = std::make_unique<SyncManager>(m_dbManager, m_config, this);
     connect(m_syncManager.get(), &SyncManager::syncFinished, this, &MainWindow::onSyncFinished);
+    connect(m_syncManager.get(), &SyncManager::syncAuthError, this, [this]() {
+        m_accessToken.clear();
+        if (m_statusLabel) {
+            m_statusLabel->setText("Token: Invalid / Expired (Please login again)");
+        }
+        QMessageBox::warning(this, "Session Expired", "Your session has expired or is invalid. Please log in again.");
+    });
     
     menuBar()->setNativeMenuBar(false);
     
@@ -453,14 +462,31 @@ void MainWindow::populateMyDevices() {
         bottomLayout->addWidget(statusBadge);
         bottomLayout->addStretch();
         
+        QPushButton* removeBtn = new QPushButton("Remove");
+        removeBtn->setStyleSheet("background-color: #D32F2F; color: white; border-radius: 4px; padding: 5px 10px; border: none;");
+        
+        std::string dId = dev.id;
+        connect(removeBtn, &QPushButton::clicked, this, [this, dId]() {
+            this->requireLoginAndExecute([this, dId]() {
+                auto reply = QMessageBox::question(this, "Remove Device", "Remove device from 'My Devices'?", QMessageBox::Yes | QMessageBox::No);
+                if (reply == QMessageBox::Yes) {
+                    if (this->m_dbManager && this->m_dbManager->updateDevicePath(dId, "")) {
+                        this->populateDevices();
+                    } else {
+                        QMessageBox::warning(this, "Error", "Failed to remove device.");
+                    }
+                }
+            });
+        });
+
         QPushButton* changeBtn = new QPushButton("Change Path");
         changeBtn->setStyleSheet("background-color: #005A9C; color: white; border-radius: 4px; padding: 5px 10px; border: none;");
         
-        std::string dId = dev.id;
         connect(changeBtn, &QPushButton::clicked, this, [this, dId]() {
             this->changeDevicePath(dId);
         });
         
+        bottomLayout->addWidget(removeBtn);
         bottomLayout->addWidget(changeBtn);
         cardLayout->addLayout(bottomLayout);
         
@@ -602,17 +628,24 @@ void MainWindow::populateAllDevices() {
 
 void MainWindow::changeDevicePath(const std::string& deviceId) {
     requireLoginAndExecute([this, deviceId]() {
-        QString dir = QFileDialog::getExistingDirectory(this, "Select Local Folder for Device Data",
-                                                        QString(),
-                                                        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
-        
-        if (!dir.isEmpty() && m_dbManager) {
-            if (m_dbManager->updateDevicePath(deviceId, dir.toStdString())) {
-                populateDevices();
-            } else {
-                QMessageBox::warning(this, "Error", "Failed to save device path configuration.");
+        downloadPlugin(deviceId, [this, deviceId](bool success) {
+            if (!success) {
+                QMessageBox::warning(this, "Plugin Download Failed", "Failed to download plugin for device. Configuration aborted.");
+                return;
             }
-        }
+            
+            QString dir = QFileDialog::getExistingDirectory(this, "Select Local Folder for Device Data",
+                                                            QString(),
+                                                            QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+            
+            if (!dir.isEmpty() && m_dbManager) {
+                if (m_dbManager->updateDevicePath(deviceId, dir.toStdString())) {
+                    populateDevices();
+                } else {
+                    QMessageBox::warning(this, "Error", "Failed to save device path configuration.");
+                }
+            }
+        });
     });
 }
 
@@ -630,4 +663,57 @@ void MainWindow::logout() {
         
         QMessageBox::information(this, "Logged Out", "You have been successfully logged out.");
     }
+}
+
+void MainWindow::downloadPlugin(const std::string& deviceId, std::function<void(bool)> onComplete) {
+    QString pluginDir = QCoreApplication::applicationDirPath() + "/devices/plugins";
+    
+    QDir dir;
+    if (!dir.exists(pluginDir)) {
+        dir.mkpath(pluginDir);
+    }
+    
+    QString scheme = m_config.wserver.useHttps ? "https://" : "http://";
+    QString host = m_config.wserver.host;
+    if (host == "[IP_ADDRESS]" || host.isEmpty()) {
+        host = "127.0.0.1";
+    }
+    QString urlStr = scheme + host + ":" + QString::number(m_config.wserver.port) + "/api/v1/devices/plugin?id=" + QString::fromStdString(deviceId);
+    
+    QNetworkRequest request((QUrl(urlStr)));
+    request.setRawHeader("Authorization", ("Bearer " + m_accessToken).toUtf8());
+    
+    QNetworkAccessManager* manager = new QNetworkAccessManager(this);
+    QNetworkReply* reply = manager->get(request);
+    
+    connect(reply, &QNetworkReply::finished, this, [this, reply, manager, pluginDir, deviceId, onComplete]() {
+        reply->deleteLater();
+        manager->deleteLater();
+        
+        if (reply->error() == QNetworkReply::NoError) {
+            QByteArray data = reply->readAll();
+            QString filename = "plugin_" + QString::fromStdString(deviceId) + ".dll";
+            
+            QString disp = reply->rawHeader("Content-Disposition");
+            if (disp.contains("filename=")) {
+                int idx = disp.indexOf("filename=");
+                filename = disp.mid(idx + 9).remove("\"");
+            }
+            
+            QString filePath = pluginDir + "/" + filename;
+            QFile file(filePath);
+            if (file.open(QIODevice::WriteOnly)) {
+                file.write(data);
+                file.close();
+                spdlog::info("Plugin downloaded to: {}", filePath.toStdString());
+                onComplete(true);
+            } else {
+                spdlog::error("Failed to write plugin file: {}", filePath.toStdString());
+                onComplete(false);
+            }
+        } else {
+            spdlog::error("Failed to download plugin: {}", reply->errorString().toStdString());
+            onComplete(false);
+        }
+    });
 }

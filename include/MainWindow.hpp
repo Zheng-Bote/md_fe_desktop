@@ -38,7 +38,8 @@ public:
 
     void setAccessToken(const QString& token);
     void startBackgroundSync();
-    
+    void requireLoginAndExecute(std::function<void()> onSuccess);
+
 public slots:
     void logout();
     void showAboutDialog();
@@ -48,9 +49,9 @@ public slots:
     void populateDevices();
 
 private:
-    void requireLoginAndExecute(std::function<void()> onSuccess);
     void populateMyDevices();
     void populateAllDevices();
+    void downloadPlugin(const std::string& deviceId, std::function<void(bool)> onComplete);
 
     DesktopConfig& m_config;
     QLabel* m_statusLabel;
