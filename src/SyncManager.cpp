@@ -16,6 +16,7 @@
  */
 
 #include "SyncManager.hpp"
+#include <nlohmann/json.hpp>
 #include <httplib.h>
 #include <spdlog/spdlog.h>
 #include <QThread>
@@ -94,6 +95,36 @@ void SyncManager::performSync(const std::string& jwtToken) {
                 }
             } else {
                 spdlog::warn("SyncManager: Failed to fetch devices.");
+            }
+            // -- Measurement Upload (Store and Forward) --
+            auto pendingMeasurements = dbManager->getUnsyncedMeasurements();
+            if (!pendingMeasurements.empty()) {
+                nlohmann::json uploadJson;
+                uploadJson["measurements"] = nlohmann::json::array();
+                
+                for (const auto& m : pendingMeasurements) {
+                    nlohmann::json mJson;
+                    mJson["measurement_id"] = m.id;
+                    mJson["device_id"] = m.device_id;
+                    
+                    // Convert vector<unsigned char> to base64
+                    QByteArray ba(reinterpret_cast<const char*>(m.payload_encrypted.data()), m.payload_encrypted.size());
+                    mJson["payload_encrypted"] = ba.toBase64().toStdString();
+                    
+                    uploadJson["measurements"].push_back(mJson);
+                }
+                
+                std::string body = uploadJson.dump();
+                auto resUpload = cli.Post("/api/v1/measurements/upload", body, "application/json");
+                
+                if (resUpload && resUpload->status == 200) {
+                    spdlog::info("Successfully uploaded {} measurements.", pendingMeasurements.size());
+                    for (const auto& m : pendingMeasurements) {
+                        dbManager->updateMeasurementStatus(m.id, "synced");
+                    }
+                } else {
+                    spdlog::warn("SyncManager: Failed to upload measurements. Status: {}", resUpload ? resUpload->status : -1);
+                }
             }
             
             emit syncFinished(true);

@@ -28,6 +28,7 @@
 #include "DatabaseManager.hpp"
 #include "TokenManager.hpp"
 #include "SyncManager.hpp"
+#include "core/DeviceManager.hpp"
 #include <functional>
 
 class MainWindow : public QMainWindow {
@@ -47,6 +48,7 @@ public slots:
     void onSyncFinished(bool success);
     void changeDevicePath(const std::string& deviceId);
     void populateDevices();
+    void refreshUploadQueue();
 
 private:
     void populateMyDevices();
@@ -58,6 +60,7 @@ private:
     QLabel* m_appInfoLabel;
     std::shared_ptr<DatabaseManager> m_dbManager;
     std::unique_ptr<SyncManager> m_syncManager;
+    std::unique_ptr<core::DeviceManager> m_deviceManager;
     TokenManager* m_tokenManager;
     QString m_accessToken;
     
@@ -66,6 +69,7 @@ private:
     QWidget* m_devicesContainer;
     QWidget* m_allDevicesContainer;
     QLineEdit* m_allDevicesSearchInput;
+    class QTableWidget* m_uploadTable;
 };
 
 #endif // MAINWINDOW_HPP

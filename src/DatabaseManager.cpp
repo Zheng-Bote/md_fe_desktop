@@ -82,7 +82,17 @@ bool DatabaseManager::createTables() {
         );
     )";
     
-    return executeQuery(typesTable) && executeQuery(devicesTable);
+    const char* measurementsTable = R"(
+        CREATE TABLE IF NOT EXISTS measurements (
+            id TEXT PRIMARY KEY,
+            device_id TEXT,
+            payload_encrypted BLOB,
+            status TEXT,
+            created_at TEXT
+        );
+    )";
+    
+    return executeQuery(typesTable) && executeQuery(devicesTable) && executeQuery(measurementsTable);
 }
 
 bool DatabaseManager::upsertDeviceType(const DeviceType& dt) {
@@ -211,5 +221,72 @@ std::vector<DeviceType> DatabaseManager::getDeviceTypes() const {
         }
         sqlite3_finalize(stmt);
     }
+    return result;
+}
+
+#include <QUuid>
+
+bool DatabaseManager::saveMeasurement(const std::string& device_id, const std::vector<unsigned char>& payload_encrypted) {
+    const char* sql = "INSERT INTO measurements (id, device_id, payload_encrypted, status, created_at) "
+                      "VALUES (?, ?, ?, 'pending', datetime('now'));";
+                      
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        spdlog::error("Failed to prepare saveMeasurement stmt: {}", sqlite3_errmsg(db));
+        return false;
+    }
+    
+    std::string id = QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString();
+    
+    sqlite3_bind_text(stmt, 1, id.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, device_id.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_blob(stmt, 3, payload_encrypted.data(), payload_encrypted.size(), SQLITE_STATIC);
+    
+    bool result = (sqlite3_step(stmt) == SQLITE_DONE);
+    if (!result) {
+        spdlog::error("Failed to execute saveMeasurement: {}", sqlite3_errmsg(db));
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+std::vector<MeasurementRecord> DatabaseManager::getUnsyncedMeasurements() const {
+    std::vector<MeasurementRecord> result;
+    const char* sql = "SELECT id, device_id, payload_encrypted, status, created_at FROM measurements WHERE status = 'pending';";
+    sqlite3_stmt* stmt;
+    
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            MeasurementRecord m;
+            m.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            m.device_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            
+            const void* blob = sqlite3_column_blob(stmt, 2);
+            int bytes = sqlite3_column_bytes(stmt, 2);
+            if (blob && bytes > 0) {
+                const unsigned char* p = static_cast<const unsigned char*>(blob);
+                m.payload_encrypted.assign(p, p + bytes);
+            }
+            
+            m.status = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+            m.created_at = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+            result.push_back(m);
+        }
+        sqlite3_finalize(stmt);
+    }
+    return result;
+}
+
+bool DatabaseManager::updateMeasurementStatus(const std::string& measurement_id, const std::string& status) {
+    const char* sql = "UPDATE measurements SET status = ? WHERE id = ?;";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    sqlite3_bind_text(stmt, 1, status.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, measurement_id.c_str(), -1, SQLITE_STATIC);
+    
+    bool result = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
     return result;
 }

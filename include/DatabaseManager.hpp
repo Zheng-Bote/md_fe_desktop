@@ -46,6 +46,14 @@ struct Device {
     std::string local_config_path; // Frontend configured field
 };
 
+struct MeasurementRecord {
+    std::string id;
+    std::string device_id;
+    std::vector<unsigned char> payload_encrypted;
+    std::string status; // "pending", "synced", "failed"
+    std::string created_at;
+};
+
 class DatabaseManager {
 public:
     DatabaseManager();
@@ -57,6 +65,11 @@ public:
     bool upsertDeviceType(const DeviceType& dt);
     bool upsertDevice(const Device& d);
     bool updateDevicePath(const std::string& deviceId, const std::string& path);
+    
+    // Measurement functions
+    bool saveMeasurement(const std::string& device_id, const std::vector<unsigned char>& payload_encrypted);
+    std::vector<MeasurementRecord> getUnsyncedMeasurements() const;
+    bool updateMeasurementStatus(const std::string& measurement_id, const std::string& status);
     
     std::vector<Device> getDevices() const;
     std::vector<DeviceType> getDeviceTypes() const;

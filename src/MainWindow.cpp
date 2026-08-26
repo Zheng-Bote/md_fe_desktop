@@ -50,11 +50,16 @@
 #include <QFrame>
 #include <QFileDialog>
 #include <QApplication>
+#include <QTableWidget>
+#include <QHeaderView>
+#include <QTimer>
 
 MainWindow::MainWindow(DesktopConfig& config, std::shared_ptr<DatabaseManager> dbMgr, TokenManager* tm, QWidget* parent) 
     : QMainWindow(parent), m_config(config), m_dbManager(dbMgr), m_tokenManager(tm) {
     
     m_syncManager = std::make_unique<SyncManager>(m_dbManager, m_config, this);
+    m_deviceManager = std::make_unique<core::DeviceManager>(m_dbManager, "STATIC_FALLBACK_KEY_FOR_NOW"); // Typically from keychain or derived from password
+    
     connect(m_syncManager.get(), &SyncManager::syncFinished, this, &MainWindow::onSyncFinished);
     connect(m_syncManager.get(), &SyncManager::syncAuthError, this, [this]() {
         m_accessToken.clear();
@@ -147,8 +152,23 @@ MainWindow::MainWindow(DesktopConfig& config, std::shared_ptr<DatabaseManager> d
     allDevLayout->addWidget(allScrollArea);
     m_stackedWidget->addWidget(allDevicesView);
     
-    // Dummy views for others
-    m_stackedWidget->addWidget(new QLabel("<h2>Upload Queue</h2><p>No active uploads.</p>"));
+    // Upload Queue View
+    QWidget* uploadView = new QWidget();
+    QVBoxLayout* uploadLayout = new QVBoxLayout(uploadView);
+    uploadLayout->addWidget(new QLabel("<h2>Upload Queue</h2>"));
+    
+    m_uploadTable = new QTableWidget();
+    m_uploadTable->setColumnCount(4);
+    m_uploadTable->setHorizontalHeaderLabels({"Measurement ID", "Device ID", "Created At", "Status"});
+    m_uploadTable->horizontalHeader()->setStretchLastSection(true);
+    uploadLayout->addWidget(m_uploadTable);
+    
+    QPushButton* refreshQueueBtn = new QPushButton("Refresh Queue");
+    connect(refreshQueueBtn, &QPushButton::clicked, this, &MainWindow::refreshUploadQueue);
+    uploadLayout->addWidget(refreshQueueBtn);
+    
+    m_stackedWidget->addWidget(uploadView);
+    
     m_stackedWidget->addWidget(new QLabel("<h2>Settings</h2>"));
     
     connect(m_sidebar, &QListWidget::currentRowChanged, m_stackedWidget, &QStackedWidget::setCurrentIndex);
@@ -166,6 +186,14 @@ MainWindow::MainWindow(DesktopConfig& config, std::shared_ptr<DatabaseManager> d
     
     // Initial population of devices
     populateDevices();
+    
+    // Start active configured devices on launch
+    auto allDevs = m_dbManager->getDevices();
+    for (const auto& d : allDevs) {
+        if (!d.local_config_path.empty() && d.active) {
+            m_deviceManager->startDevice(d);
+        }
+    }
 
     // Setup Status Bar Info
     QString versionStr = QString::fromUtf8(rz::config::VERSION.data(), rz::config::VERSION.size());
@@ -223,6 +251,18 @@ void MainWindow::startBackgroundSync() {
     if (m_syncManager) {
         spdlog::info("Starting background sync for devices...");
         m_syncManager->performSync(m_accessToken.toStdString());
+    }
+    
+    // Auto-sync every 30 seconds
+    static QTimer* syncTimer = nullptr;
+    if (!syncTimer) {
+        syncTimer = new QTimer(this);
+        connect(syncTimer, &QTimer::timeout, this, [this]() {
+            if (m_syncManager && !m_accessToken.isEmpty()) {
+                m_syncManager->performSync(m_accessToken.toStdString());
+            }
+        });
+        syncTimer->start(30000); // 30 seconds
     }
 }
 
@@ -412,7 +452,25 @@ void MainWindow::populateDevices() {
     populateAllDevices();
 }
 
+void MainWindow::refreshUploadQueue() {
+    if (!m_uploadTable || !m_dbManager) return;
+    
+    // We get the pending ones. If we want all, we'd need a different query, but getUnsyncedMeasurements gives us 'pending'.
+    // Let's just show pending for now.
+    auto pending = m_dbManager->getUnsyncedMeasurements();
+    
+    m_uploadTable->setRowCount(0);
+    for (int i = 0; i < pending.size(); ++i) {
+        m_uploadTable->insertRow(i);
+        m_uploadTable->setItem(i, 0, new QTableWidgetItem(QString::fromStdString(pending[i].id)));
+        m_uploadTable->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(pending[i].device_id)));
+        m_uploadTable->setItem(i, 2, new QTableWidgetItem(QString::fromStdString(pending[i].created_at)));
+        m_uploadTable->setItem(i, 3, new QTableWidgetItem(QString::fromStdString(pending[i].status)));
+    }
+}
+
 void MainWindow::populateMyDevices() {
+    refreshUploadQueue();
     if (m_devicesContainer->layout()) {
         clearLayout(m_devicesContainer->layout());
         delete m_devicesContainer->layout();
@@ -630,8 +688,8 @@ void MainWindow::changeDevicePath(const std::string& deviceId) {
     requireLoginAndExecute([this, deviceId]() {
         downloadPlugin(deviceId, [this, deviceId](bool success) {
             if (!success) {
-                QMessageBox::warning(this, "Plugin Download Failed", "Failed to download plugin for device. Configuration aborted.");
-                return;
+                spdlog::warn("Plugin download failed, but bypassing for Phase 3 dummy testing.");
+                // We bypass this because we statically linked MaicoGdtPlugin
             }
             
             QString dir = QFileDialog::getExistingDirectory(this, "Select Local Folder for Device Data",
@@ -641,6 +699,16 @@ void MainWindow::changeDevicePath(const std::string& deviceId) {
             if (!dir.isEmpty() && m_dbManager) {
                 if (m_dbManager->updateDevicePath(deviceId, dir.toStdString())) {
                     populateDevices();
+                    // Start or restart the device plugin
+                    m_deviceManager->stopDevice(deviceId);
+                    
+                    auto devs = m_dbManager->getDevices();
+                    for (const auto& d : devs) {
+                        if (d.id == deviceId) {
+                            m_deviceManager->startDevice(d);
+                            break;
+                        }
+                    }
                 } else {
                     QMessageBox::warning(this, "Error", "Failed to save device path configuration.");
                 }
@@ -692,28 +760,32 @@ void MainWindow::downloadPlugin(const std::string& deviceId, std::function<void(
         
         if (reply->error() == QNetworkReply::NoError) {
             QByteArray data = reply->readAll();
-            QString filename = "plugin_" + QString::fromStdString(deviceId) + ".dll";
             
-            QString disp = reply->rawHeader("Content-Disposition");
-            if (disp.contains("filename=")) {
-                int idx = disp.indexOf("filename=");
-                filename = disp.mid(idx + 9).remove("\"");
-            }
+#if defined(Q_OS_WIN)
+            QString ext = ".dll";
+#elif defined(Q_OS_MAC)
+            QString ext = ".dylib";
+#else
+            QString ext = ".so";
+#endif
             
-            QString filePath = pluginDir + "/" + filename;
-            QFile file(filePath);
+            QString filename = "plugin_" + QString::fromStdString(deviceId) + ext;
+            QString fullPath = pluginDir + "/" + filename;
+            
+            QFile file(fullPath);
             if (file.open(QIODevice::WriteOnly)) {
                 file.write(data);
                 file.close();
-                spdlog::info("Plugin downloaded to: {}", filePath.toStdString());
+                spdlog::info("Successfully downloaded plugin to {}", fullPath.toStdString());
                 onComplete(true);
             } else {
-                spdlog::error("Failed to write plugin file: {}", filePath.toStdString());
+                spdlog::error("Failed to save downloaded plugin to {}", fullPath.toStdString());
                 onComplete(false);
             }
         } else {
             spdlog::error("Failed to download plugin: {}", reply->errorString().toStdString());
             onComplete(false);
         }
+        reply->deleteLater();
     });
 }

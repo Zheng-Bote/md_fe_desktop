@@ -86,6 +86,16 @@ add_executable(md_fe_desktop
     include/DatabaseManager.hpp
     src/SyncManager.cpp
     include/SyncManager.hpp
+    src/normalization/NormalizationEngine.cpp
+    include/normalization/NormalizationEngine.hpp
+    include/normalization/MeasurementData.hpp
+    src/plugins/MaicoGdtPlugin.cpp
+    src/plugins/BaseFileWatcherPlugin.cpp
+    include/plugins/MaicoGdtPlugin.hpp
+    include/plugins/BaseFileWatcherPlugin.hpp
+    include/plugins/IDevicePlugin.hpp
+    src/core/DeviceManager.cpp
+    include/core/DeviceManager.hpp
 )
 
 target_link_libraries(md_fe_desktop PRIVATE
